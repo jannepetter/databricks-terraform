@@ -4,27 +4,12 @@ from azure.identity import (
     DefaultAzureCredential,
 )
 from databricks import sql
+import duckdb
 from dotenv import load_dotenv
 
 load_dotenv()
 HOST = os.getenv("DATABRICKS_HOST")
 PAT_TOKEN = os.getenv("PAT_TOKEN")
+HOST_ENDPOINT = os.getenv("HOST_ENDPOINT")
 
-
-def run_stuff():
-    print("running stuff")
-    # credential = DefaultAzureCredential()
-    # token = credential.get_token(
-    # )
-
-    w = WorkspaceClient(token=PAT_TOKEN, host=HOST)
-    # print("kata--", w.current_user.me())
-    # for c in w.clusters.list():
-    #     print(c.cluster_name)
-
-    # query_id = w.sql.execute("SELECT COUNT(*) FROM table")
-    # result = w.sql.get_results(query_id)
-    # print("res--", lista)
-
-
-run_stuff()
+print("do stuff?")

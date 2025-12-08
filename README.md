@@ -1,9 +1,11 @@
 # Databrics testing
 
-DATABRICKS_HOST requires the https://  e.g ->:  
+## secrets
+#secrets/createScope at the end of the host url (paste)
 
-https://your-workspace-id.azuredatabricks.net
+Add kv info to the scope, dns name https://mykv.vault.azure.net/ and resource id /subscriptions/my-subs/resourceGroups/my-rg/providers/Microsoft.KeyVault/vaults/my-kv
 
-Spin up the resources, create compute cluster, create PAT token -> do queries
+tenant_id = dbutils.secrets.get(scope="joo-scope", key="tenant-id")  
+joo-scope is now mapped to mykv and you can fetch secrets with the key  
 
-Terraform expects the subscription id
+dbutils comes with databricks, when remote connecting. No need to import (at least with notebooks)

@@ -1,12 +1,13 @@
 resources:
   jobs:
     my_job:
-      name: "my_job"
+      name: "new_cluster_job"
       tasks:
         - task_key: main_task
           python_wheel_task:
             package_name: src_module
-            entry_point: main-pipe
+            entry_point: pipe1
+            parameters: ["--catalog","${var.catalog}"]
           libraries: 
             - whl: ../dist/*.whl
           new_cluster:

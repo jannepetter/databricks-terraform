@@ -1,0 +1,19 @@
+resources:
+  jobs:
+    my_job_serverless:
+      name: "my_job_serverless"
+      tasks:
+        - task_key: main_task
+          python_wheel_task:
+            package_name: src_module
+            entry_point: pipe2
+            parameters: ["--catalog","${var.catalog}"]
+          libraries: 
+            - whl: ../dist/*.whl
+          environment_key: serverless_env
+          
+      environments:
+        - environment_key: serverless_env
+          spec:
+            environment_version : "1"
+

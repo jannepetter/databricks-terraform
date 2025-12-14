@@ -5,12 +5,37 @@
 bundle:
   name: databricks-terraform
 
+sync:
+  include:
+    - dist/*.whl
+
+include:
+  - jobs/*.yml
+
+artifacts:
+  src_module_whl:
+    type: whl
+    build: |
+      rm -rf dist build *.egg-info
+      python -m build
+    path: .
+
+variables:
+  cluster_id: 
+    description: The existing cluster ID to run jobs on.
+  catalog:
+    description: The catalog the target is writing
+
 targets:
-  dev:
+  devjoo:
     mode: development
     default: true
     workspace:
-      host: https://adb-345008256263057.17.azuredatabricks.net
+      host: https://adb-7405605175975082.2.azuredatabricks.net
+    variables:
+      cluster_id: 1214-184530-8g8kddwn
+      catalog: devjoo
+
 
   ## Optionally, there could be 'staging' or 'prod' targets here.
   #

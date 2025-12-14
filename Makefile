@@ -12,3 +12,4 @@ apply_terraform:
 destroy_terraform:
 	terraform -chdir=terraform destroy
 
+# source .venv/bin/activate

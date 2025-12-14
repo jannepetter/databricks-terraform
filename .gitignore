@@ -2,3 +2,6 @@
 terraform.tfstate*
 .terraform*
 .databricks
+.venv/
+src_module.egg-info
+dist/

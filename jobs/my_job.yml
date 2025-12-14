@@ -1,0 +1,16 @@
+resources:
+  jobs:
+    my_job:
+      name: "my_job"
+      tasks:
+        - task_key: main_task
+          python_wheel_task:
+            package_name: src_module
+            entry_point: main-pipe
+          libraries: 
+            - whl: ../dist/*.whl
+          new_cluster:
+            spark_version: "13.3.x-scala2.12"
+            node_type_id: "Standard_D2ds_v6"
+            num_workers: 1
+            data_security_mode: USER_ISOLATION

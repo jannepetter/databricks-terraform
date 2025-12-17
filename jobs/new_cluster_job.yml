@@ -2,16 +2,65 @@ resources:
   jobs:
     my_job:
       name: "new_cluster_job"
-      tasks:
-        - task_key: main_task
-          python_wheel_task:
-            package_name: src_module
-            entry_point: pipe1
-            parameters: ["--catalog","${var.catalog}"]
-          libraries: 
-            - whl: ../dist/*.whl
+
+      job_clusters:
+        - job_cluster_key: shared_cluster
           new_cluster:
             spark_version: "13.3.x-scala2.12"
             node_type_id: "Standard_D2ds_v6"
-            num_workers: 1
+            num_workers: 2
             data_security_mode: USER_ISOLATION
+
+      tasks:
+        - task_key: init_task
+          job_cluster_key: shared_cluster
+          python_wheel_task:
+            package_name: src_module
+            entry_point: pipe1
+            parameters:
+              - "--catalog"
+              - "${var.catalog}"
+              - "--environment"
+              - "dev"
+              - "--task_name"
+              - "init_jobs"
+          libraries:
+            - whl: ../dist/*.whl
+
+        - task_key: dippadai_task
+          job_cluster_key: shared_cluster
+          depends_on:
+            - task_key: init_task
+          python_wheel_task:
+            package_name: src_module
+            entry_point: pipe1
+            parameters:
+              - "--catalog"
+              - "${var.catalog}"
+              - "--environment"
+              - "dev"
+              - "--task_name"
+              - "dippadai_jobs"
+              - "--source"
+              - "somesource"
+          libraries:
+            - whl: ../dist/*.whl
+
+        - task_key: dappadai_task
+          job_cluster_key: shared_cluster
+          depends_on:
+            - task_key: init_task
+          python_wheel_task:
+            package_name: src_module
+            entry_point: pipe1
+            parameters:
+              - "--catalog"
+              - "${var.catalog}"
+              - "--environment"
+              - "dev"
+              - "--task_name"
+              - "dappadai_jobs"
+              - "--source"
+              - "somesource"
+          libraries:
+            - whl: ../dist/*.whl

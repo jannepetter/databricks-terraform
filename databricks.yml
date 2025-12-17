@@ -31,9 +31,9 @@ targets:
     mode: development
     default: true
     workspace:
-      host: https://adb-7405605175975082.2.azuredatabricks.net
+      host: https://adb-7405619158926247.7.azuredatabricks.net/
     variables:
-      cluster_id: 1214-184530-8g8kddwn
+      cluster_id: 1217-205841-2f4fbf6v
       catalog: devjoo
 
 

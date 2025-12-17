@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "src_module"
-version = "0.1.1-4"
+version = "0.1.1-9"
 
-[tool.setuptools]
-packages = ["src_module","src_module.pipelines","src_module.core"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src_module*"]
 
 [project.scripts]
-main-pipe = "src_module.main_pipe:main"
 pipe1 = "src_module.pipelines.pipe1:run"
 pipe2 = "src_module.pipelines.pipe2:run"
 

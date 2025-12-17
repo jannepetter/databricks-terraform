@@ -1,0 +1,10 @@
+[MASTER]
+# Optional: ignore virtualenvs or build dirs
+; ignore=venv,.venv,build,dist
+
+[MESSAGES CONTROL]
+# Disable all docstring-related warnings
+disable=
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring

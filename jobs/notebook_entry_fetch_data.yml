@@ -1,0 +1,46 @@
+resources:
+  jobs:
+    uc_notebook_job:
+      name: uc_notebook_job
+
+      tasks:
+        - task_key: run_notebook_init
+          notebook_task:
+            notebook_path: "../notebooks/notebook_demo_runner.py"
+            base_parameters:
+              env: "dev"
+              catalog: "devjoo"
+              task_name: "init_jobs"
+              source: "nosource"
+          environment_key: serverless_env_notebook
+
+        - task_key: run_notebook_dippa
+          depends_on:
+            - task_key: run_notebook_init
+          notebook_task:
+            notebook_path: "../notebooks/notebook_demo_runner.py"
+            base_parameters:
+              env: "dev"
+              catalog: "devjoo"
+              task_name: "dippadai_jobs"
+              source: "somesource"
+          environment_key: serverless_env_notebook
+  
+        - task_key: run_notebook_dappa
+          depends_on:
+            - task_key: run_notebook_init
+          notebook_task:
+            notebook_path: "../notebooks/notebook_demo_runner.py"
+            base_parameters:
+              env: "dev"
+              catalog: "devjoo"
+              task_name: "dappadai_jobs"
+              source: "othersource"
+          environment_key: serverless_env_notebook
+
+      environments:
+        - environment_key: serverless_env_notebook
+          spec:
+            environment_version: "1"
+            dependencies:
+              - ../dist/*.whl

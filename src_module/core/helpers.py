@@ -1,10 +1,12 @@
 import random
 import time
 import uuid
+from pyspark.sql import SparkSession
 from pyspark.sql.functions import current_timestamp, lit
 from pyspark.sql import functions as F
-from pyspark.sql import SparkSession
-from src_module.schemas.job_processing_status import JOB_STATUS_SCHEMA
+from src_module.schemas import (
+    JOB_STATUS_SCHEMA,
+)
 
 
 class BaseRunner:
@@ -17,8 +19,7 @@ class BaseRunner:
         self.worker_id = str(uuid.uuid4())
 
         if create_schemas:
-            self.create_schemas(["bronze", "silver"])
-            self._create_job_data_schema()
+            self.init_schemas()
 
     def init_jobs_for_organisations(
         self, source_jobs: dict, organisations: list, skip_jobs: list
@@ -33,6 +34,8 @@ class BaseRunner:
             for job in jobs_to_init:
                 if job["job_name"] not in skip_jobs:
                     job_entry = {
+                        "id": str(uuid.uuid4()),
+                        "status": "pending",
                         "job_name": job["job_name"],
                         "company_name": organisation["name"],
                         "company_id": organisation["id"],
@@ -41,60 +44,83 @@ class BaseRunner:
                     }
                     job_entries.append(job_entry)
 
-        print("job entries--:", job_entries)
-        df = self.spark.createDataFrame(job_entries)
+        print("job entries:", job_entries)
+        df = self.spark.createDataFrame(job_entries, schema=JOB_STATUS_SCHEMA)
 
         df = (
-            df.withColumn("status", lit("pending"))
-            .withColumn("last_run_start_time", lit(None).cast("timestamp"))
+            df.withColumn("last_run_start_time", lit(None).cast("timestamp"))
             .withColumn("last_run_end_time", lit(None).cast("timestamp"))
             .withColumn("worker_id", lit(None).cast("string"))
             .withColumn("error_message", lit(None).cast("string"))
-            .withColumn("id", F.expr("uuid()"))
             .withColumn("updated_at", current_timestamp())
             .withColumn("ETLInsertTime", current_timestamp())
         )
         df.write.format("delta").mode("append").saveAsTable(self.job_status_table)
 
-    def create_schemas(self, schema_list: list):
+    def init_schemas(self):
         """
-        Create schemas under the selected catalog.
+        Init schemas under the selected catalog.
         """
-        for schema in schema_list:
+
+        structures = self.get_schema_structure()
+        for schema, tables in structures.items():
             self.spark.sql(f"CREATE SCHEMA IF NOT EXISTS {self.catalog}.{schema}")
+            for table_name, table_schema in tables:
+                self.spark.createDataFrame([], table_schema).write.format("delta").mode(
+                    "ignore"
+                ).saveAsTable(f"{self.catalog}.{schema}.{table_name}")
+                print(f"Created/checked table {self.catalog}.{schema}.{table_name}")
 
-    def _create_job_data_schema(self):
-        """
-        Create job processing status table if it does not exist.
-        """
-        self.spark.createDataFrame([], JOB_STATUS_SCHEMA).write.format("delta").mode(
-            "ignore"
-        ).saveAsTable(self.job_status_table)
-        print(f"Job status table ready at {self.job_status_table}")
+    def run_migration(self, migration):
 
-    def drop_job_data_schema(self):
+        self.spark.sql(migration)
+        print("Ran migration:", migration)
+
+    def drop_table(self, schema: str, table_name: str):
         """
         Drop job processing status table.
         """
-        self.spark.sql(f"DROP TABLE IF EXISTS {self.job_status_table}")
-        print(f"Dropped table {self.job_status_table}")
+        table_to_drop = f"{self.catalog}.{schema}.{table_name}"
+        self.spark.sql(f"DROP TABLE IF EXISTS {table_to_drop}")
+        print(f"Dropped table {table_to_drop}")
 
-    def get_next_pending_job(
-        self,
-        job_name: str,
-        source_system: str,
-    ) -> dict | None:
+    def get_next_pending_job(self, job_name: str, source_system: str) -> dict | None:
         """
-        Atomically claim the next pending job.
-        Returns None if no jobs are available.
-        Retries on contention or transient errors.
+        Atomically claims one pending job by stamping worker_id with self.worker_id.
+        Returns the claimed job as a dict, or None if no job is available.
+
+        Assumptions:
+        - worker_id is a stable identifier for this worker
+        - id is unique
+        - Delta table
         """
 
         table = self.job_status_table
+        max_attempts = 5
+        sleep_seconds = 1
 
-        while True:
+        for attempt in range(max_attempts):
             try:
-                # 1. Atomically claim ONE job
+                # 1) Select ONE candidate job id (read-only)
+                candidate = (
+                    self.spark.table(table)
+                    .where(
+                        (F.col("status") == "pending")
+                        & (F.col("job_name") == job_name)
+                        & (F.col("source_system") == source_system)
+                    )
+                    .select("id", "company_id", "company_name", "source_system_key_id")
+                    .limit(1)
+                    .collect()
+                )
+
+                # No jobs left → exit immediately
+                if not candidate:
+                    return None
+
+                job_id = candidate[0]["id"]
+
+                # 2) Try to claim THAT EXACT job id (atomic condition)
                 self.spark.sql(
                     f"""
                     UPDATE {table}
@@ -103,39 +129,35 @@ class BaseRunner:
                         worker_id = '{self.worker_id}',
                         last_run_start_time = current_timestamp(),
                         updated_at = current_timestamp()
-                    WHERE id IN (
-                        SELECT id
-                        FROM {table}
-                        WHERE status = 'pending'
-                        AND job_name = '{job_name}'
-                        AND source_system = '{source_system}'
-                        ORDER BY updated_at
-                        LIMIT 1
-                    )
+                    WHERE id = '{job_id}'
                     AND status = 'pending'
                 """
                 )
 
-                # 2. Read the job we just claimed
-                claimed = self.spark.sql(
-                    f"""
-                    SELECT *
-                    FROM {table}
-                    WHERE worker_id = '{self.worker_id}'
-                    AND status = 'processing'
-                    ORDER BY updated_at DESC
-                    LIMIT 1
-                """
-                ).collect()
+                # 3) Check if successfully claimed it
+                claimed = (
+                    self.spark.table(table)
+                    .where(
+                        (F.col("id") == job_id)
+                        & (F.col("worker_id") == self.worker_id)
+                        & (F.col("status") == "processing")
+                    )
+                    .limit(1)
+                    .collect()
+                )
 
-                if not claimed:
-                    return None
+                if claimed:
+                    return claimed[0].asDict()
 
-                return claimed[0].asDict()
+                # Someone else claimed it first → backoff and retry
+                time.sleep(sleep_seconds)
 
             except Exception as e:  # pylint:disable=broad-exception-caught
-                print(f"Error claiming job: {e}, retrying...")
-                self.random_sleep(2, 10)
+                print(f"Error claiming job (attempt {attempt + 1}/{max_attempts}): {e}")
+                self.random_sleep(sleep_seconds, 10)
+
+        # Give up after bounded retries
+        return None
 
     def update_job_status(
         self,
@@ -187,3 +209,11 @@ class BaseRunner:
         sleep_time = random.randint(min_val, max_val)
         print(f"Sleeping for {sleep_time} seconds")
         time.sleep(sleep_time)
+
+    def get_schema_structure(self) -> dict:
+        return {
+            "bronze": [
+                ("job_processing_status", JOB_STATUS_SCHEMA),
+            ],
+            "silver": [],
+        }

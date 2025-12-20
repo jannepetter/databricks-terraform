@@ -8,12 +8,12 @@ resources:
             package_name: src_module
             entry_point: pipe2
             parameters: ["--catalog","${var.catalog}"]
-          libraries: 
-            - whl: ../dist/*.whl
           environment_key: serverless_env
           
       environments:
         - environment_key: serverless_env
           spec:
             environment_version : "1"
+            dependencies:
+              - ../dist/*.whl
 

@@ -1,15 +1,14 @@
 include .env
-
 init_terraform:
-	terraform -chdir=terraform init
+	terraform -chdir=terraform/dev init
 
 plan_terraform:
-	terraform -chdir=terraform plan
+	terraform -chdir=terraform/dev plan
 
 apply_terraform:
-	terraform -chdir=terraform apply
+	terraform -chdir=terraform/dev apply
 
 destroy_terraform:
-	terraform -chdir=terraform destroy
+	terraform -chdir=terraform/dev destroy
 
 # source .venv/bin/activate

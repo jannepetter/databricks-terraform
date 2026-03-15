@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 
-ENV=prod
+ENV=dev
 echo "Deploying for environment: $ENV"
 
 # ---- variables ----
 RESOURCE_GROUP="rg-adb-demo-$ENV"
 LOCATION="northeurope"
-KEYVAULT_NAME="demo-kv-123456"
+KEYVAULT_NAME="demo-kv-123456-$ENV"
 STORAGE_ACCOUNT_NAME="stagedemo${ENV}1234"
 CONTAINER_NAME="default"
-QUEUE_NAME="job-queue-1"
 
 # ---- create resource group (common) ----
 echo "Creating/Checking Resource Group..."
@@ -24,8 +23,7 @@ az keyvault create \
   --resource-group $RESOURCE_GROUP \
   --location $LOCATION \
   --sku standard \
-  --enable-rbac-authorization true \
-  --enable-purge-protection false
+  --enable-rbac-authorization true
 
 # ---- create storage account ----
 echo "Creating/Checking Storage Account: $STORAGE_ACCOUNT_NAME"
@@ -46,12 +44,19 @@ echo "Creating/Checking Container: $CONTAINER_NAME"
 az storage fs create \
   --name $CONTAINER_NAME \
   --account-name $STORAGE_ACCOUNT_NAME \
-  --public-access off
+  --public-access off \
+   --auth-mode login
 
 # ---- create queue ----
-echo "Creating/Checking Queue: $QUEUE_NAME"
+echo "Creating/Checking Queues
 az storage queue create \
-  --name $QUEUE_NAME \
-  --account-name $STORAGE_ACCOUNT_NAME
+  --name "job-queue-1" \
+  --account-name $STORAGE_ACCOUNT_NAME \
+   --auth-mode login
+
+az storage queue create \
+  --name "job-queue-2" \
+  --account-name $STORAGE_ACCOUNT_NAME \
+   --auth-mode login
 
 echo "done"

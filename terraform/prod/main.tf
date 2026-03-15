@@ -24,7 +24,7 @@ data "azurerm_resource_group" "rg" {
 
 # Reference the existing Key Vault created by shell script
 data "azurerm_key_vault" "kv" {
-  name                = "demo-kv-123456"
+  name                = "demo-kv-123456-prod"
   resource_group_name = data.azurerm_resource_group.rg.name
 }
 

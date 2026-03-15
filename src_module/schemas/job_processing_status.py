@@ -17,3 +17,11 @@ JOB_STATUS_SCHEMA = StructType(
         StructField("ETLInsertTime", TimestampType(), True),
     ]
 )
+
+SOME_SCHEMA = StructType(
+    [
+        StructField("company_id", StringType(), True),
+        StructField("company_name", StringType(), True),
+        StructField("ETLInsertTime", TimestampType(), True),
+    ]
+)

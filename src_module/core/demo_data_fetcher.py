@@ -1,5 +1,9 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import json
+from pyspark.sql.functions import current_timestamp
 from src_module.core.helpers import BaseRunner
 from src_module.core.source_jobs import DEMO_SOURCE_JOBS
+from src_module.schemas import SOME_SCHEMA
 
 test_organisations = [
     {
@@ -14,7 +18,7 @@ class DemoDataFetcher(BaseRunner):
     def __init__(self, catalog, environment, create_schemas=False):
         super().__init__(catalog, environment, create_schemas=create_schemas)
 
-    def run_job(self, job_name: str, source_system=None):
+    def run_job(self, job_name: str, job: dict):
 
         match job_name:
             case "init_jobs":
@@ -22,54 +26,55 @@ class DemoDataFetcher(BaseRunner):
                     DEMO_SOURCE_JOBS, test_organisations, []
                 )
 
+            case "handle_dequeue":
+                print("dequeue handle")
+                self.handle_dequeue("job-queue-1", 1, 50)
+
             case "dippadai_jobs":
-                self.run_dippadai_jobs(job_name, source_system)
+                self.run_dippadai_jobs(job_name, job)
 
             case "dappadai_jobs":
-                self.run_dappadai_jobs(job_name, source_system)
+                self.run_dappadai_jobs(job_name, job)
 
             case _:
                 raise ValueError(f"Unknown job name: {job_name}")
 
-    def run_dippadai_jobs(self, job_name: str, source_system: str):
-        print("Running DIPPADAI jobs...", job_name, source_system)
-        for _ in range(10):
-            job = self.get_next_pending_job(job_name, source_system)
+    def run_dippadai_jobs(self, job_name: str, job):
+        print("Running DIPPADAI jobs...", job_name, job)
+        self.do_writing(job)
 
-            if job is None:
-                break
+    def run_dappadai_jobs(self, job_name: str, job: str):
+        print("Running DAPPADAI jobs...", job_name, job)
+        self.do_writing(job)
 
-            organization_id = job["company_id"]
-            organization_name = job["company_name"]
-            source_system_key_id = job["source_system_key_id"]
-            print(
-                "DIPPA job data check: ",
-                organization_id,
-                organization_name,
-                source_system_key_id,
-            )
-            # do stuff
+    def handle_dequeue(self, queue_name, workers, max_messages):
+        max_workers = workers
 
-            self.update_job_status(job["id"], "completed")
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = []
 
-    def run_dappadai_jobs(self, job_name: str, source_system: str):
-        print("Running DAPPADAI jobs...", job_name, source_system)
+            for queue_client, message in self.dequeue_messages(
+                queue_name, max_messages
+            ):
+                job = json.loads(message.content)
 
-        for _ in range(10):
-            job = self.get_next_pending_job(job_name, source_system)
+                future = executor.submit(
+                    self._run_and_delete,
+                    queue_client,
+                    message,
+                    job,
+                )
+                futures.append(future)
 
-            if job is None:
-                break
+            for future in as_completed(futures):
+                future.result()
 
-            organization_id = job["company_id"]
-            organization_name = job["company_name"]
-            source_system_key_id = job["source_system_key_id"]
-            print(
-                "DAPPA job data check: ",
-                organization_id,
-                organization_name,
-                source_system_key_id,
-            )
-            # do stuff
+    def do_writing(self, job):
+        """
+        Some nonsense write task for testing.
+        """
+        target_table = f"{self.catalog}.bronze.some_table"
 
-            self.update_job_status(job["id"], "completed")
+        df = self.spark.createDataFrame([job], schema=SOME_SCHEMA)
+        df = df.withColumn("ETLInsertTime", current_timestamp())
+        (df.write.format("delta").mode("append").saveAsTable(target_table))

@@ -10,7 +10,4 @@ version = "0.1.1-11"
 where = ["."]
 include = ["src_module*"]
 
-[project.scripts]
-pipe1 = "src_module.pipelines.pipe1:run"
-pipe2 = "src_module.pipelines.pipe2:run"
 

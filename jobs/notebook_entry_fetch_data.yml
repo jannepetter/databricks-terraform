@@ -8,39 +8,33 @@ resources:
           notebook_task:
             notebook_path: "../notebooks/notebook_demo_runner.py"
             base_parameters:
-              env: "dev"
-              catalog: "devjoo"
+              env: "${var.env}"
+              catalog: "${var.catalog}"
               task_name: "init_jobs"
               source: "nosource"
           environment_key: serverless_env_notebook
 
-        - task_key: run_notebook_dippa
+        - task_key: handle_dequeue
           depends_on:
             - task_key: run_notebook_init
-          notebook_task:
-            notebook_path: "../notebooks/notebook_demo_runner.py"
-            base_parameters:
-              env: "dev"
-              catalog: "devjoo"
-              task_name: "dippadai_jobs"
-              source: "somesource"
-          environment_key: serverless_env_notebook
-  
-        - task_key: run_notebook_dappa
-          depends_on:
-            - task_key: run_notebook_init
-          notebook_task:
-            notebook_path: "../notebooks/notebook_demo_runner.py"
-            base_parameters:
-              env: "dev"
-              catalog: "devjoo"
-              task_name: "dappadai_jobs"
-              source: "othersource"
-          environment_key: serverless_env_notebook
+          for_each_task:
+            inputs: '[{"i":"1"},{"i":"2"},{"i":"3"}]'
+            concurrency: 3
+            task:
+              task_key: handle_dequeue_iteration
+              max_retries: 3
+              environment_key: serverless_env_notebook
+              notebook_task:
+                notebook_path: "../notebooks/notebook_demo_runner.py"
+                base_parameters:
+                  env: "${var.env}"
+                  catalog: "${var.catalog}"
+                  task_name: "handle_dequeue"
+                  source: "somesource"
 
       environments:
         - environment_key: serverless_env_notebook
           spec:
             environment_version: "1"
             dependencies:
-              - ../dist/*.whl
+              - "${var.wheel_path}"

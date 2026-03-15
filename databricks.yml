@@ -7,7 +7,7 @@ bundle:
 
 sync:
   include:
-    - dist/*.whl
+    - dist/
 
 include:
   - jobs/*.yml
@@ -21,10 +21,14 @@ artifacts:
     path: .
 
 variables:
+  env:
+    description: The environment
   cluster_id: 
     description: The existing cluster ID to run jobs on.
   catalog:
     description: The catalog the target is writing
+  wheel_path:
+    description: The path for the wheel artifact
 
 targets:
   devjoo:
@@ -34,11 +38,8 @@ targets:
       host: https://adb-7405609292883928.8.azuredatabricks.net/
     variables:
       cluster_id: 1220-211626-51nh68br
-      catalog: devjoo
+      catalog: test_catalog
+      wheel_path: ../dist/*.whl
+      env: dev
 
 
-  ## Optionally, there could be 'staging' or 'prod' targets here.
-  #
-  # prod:
-  #   workspace:
-  #     host: https://adb-1521681165526931.11.azuredatabricks.net

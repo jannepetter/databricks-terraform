@@ -5,3 +5,4 @@ terraform.tfstate*
 .venv/
 src_module.egg-info
 dist/
+.agent/

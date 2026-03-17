@@ -19,7 +19,7 @@ variable "SUBSCRIPTION_ID" {
 
 # Reference the existing Resource Group created by shell script
 data "azurerm_resource_group" "rg" {
-  name = "rg-adb-demo-dev-01"
+  name = "rg-adb-demo-dev-02"
 }
 
 # Reference the existing Key Vault created by shell script
@@ -33,7 +33,7 @@ module "databricks" {
 
   resource_group_name   = data.azurerm_resource_group.rg.name
   location              = data.azurerm_resource_group.rg.location
-  workspace_name        = "adb-demo-dev-01"
+  workspace_name        = "adb-demo-dev-02"
   storage_account_name  = "stagedemodev1234"
   key_vault_id          = data.azurerm_key_vault.kv.id
   

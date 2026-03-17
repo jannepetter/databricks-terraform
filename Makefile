@@ -1,4 +1,6 @@
 include .env
+export
+
 init_terraform:
 	terraform -chdir=terraform/dev init
 

@@ -4,7 +4,7 @@ ENV=dev
 echo "Deploying for environment: $ENV"
 
 # ---- variables ----
-RESOURCE_GROUP="rg-adb-demo-$ENV"
+RESOURCE_GROUP="rg-adb-demo-$ENV-01"
 LOCATION="northeurope"
 KEYVAULT_NAME="demo-kv-123456-$ENV"
 STORAGE_ACCOUNT_NAME="stagedemo${ENV}1234"
@@ -48,7 +48,7 @@ az storage fs create \
    --auth-mode login
 
 # ---- create queue ----
-echo "Creating/Checking Queues
+echo "Creating/Checking Queues"
 az storage queue create \
   --name "job-queue-1" \
   --account-name $STORAGE_ACCOUNT_NAME \

@@ -14,41 +14,43 @@ resource "azurerm_network_security_group" "nsg_pe" {
   name                = "nsg-${var.workspace_name}-pe"
   location            = var.location
   resource_group_name = var.resource_group_name
+
   security_rule {
-    name                        = "allow-inbound-from-dbx-public"
-    priority                    = 1000
-    direction                   = "Inbound"
-    access                      = "Allow"
-    protocol                    = "Tcp"
-    source_address_prefixes     = var.public_subnet_prefix
+    name                         = "allow-inbound-from-dbx-public"
+    priority                     = 1000
+    direction                    = "Inbound"
+    access                       = "Allow"
+    protocol                     = "Tcp"
+    source_address_prefixes      = var.public_subnet_prefix
     destination_address_prefixes = var.pe_subnet_prefix
-    source_port_range           = "*"
-    destination_port_range      = "443"
+    source_port_range            = "*"
+    destination_port_range       = "443"
   }
 
   security_rule {
-    name                        = "allow-inbound-from-dbx-private"
-    priority                    = 1100
-    direction                   = "Inbound"
-    access                      = "Allow"
-    protocol                    = "Tcp"
-    source_address_prefixes     = var.private_subnet_prefix
+    name                         = "allow-inbound-from-dbx-private"
+    priority                     = 1100
+    direction                    = "Inbound"
+    access                       = "Allow"
+    protocol                     = "Tcp"
+    source_address_prefixes      = var.private_subnet_prefix
     destination_address_prefixes = var.pe_subnet_prefix
-    source_port_range           = "*"
-    destination_port_range      = "443"
+    source_port_range            = "*"
+    destination_port_range       = "443"
   }
 
   security_rule {
-    name                        = "deny-inbound-all"
-    priority                    = 4096
-    direction                   = "Inbound"
-    access                      = "Deny"
-    protocol                    = "*"
-    source_address_prefix       = "*"
-    destination_address_prefix  = "*"
-    source_port_range           = "*"
-    destination_port_range      = "*"
+    name                       = "deny-inbound-all"
+    priority                   = 4096
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
   }
+
   security_rule {
     name                       = "deny-outbound-internet"
     priority                   = 1000
@@ -79,7 +81,11 @@ resource "azurerm_subnet" "public" {
     name = "databricks-del-public"
     service_delegation {
       name    = "Microsoft.Databricks/workspaces"
-      actions = ["Microsoft.Network/virtualNetworks/subnets/join/action", "Microsoft.Network/virtualNetworks/subnets/prepareNetworkPolicies/action", "Microsoft.Network/virtualNetworks/subnets/unprepareNetworkPolicies/action"]
+      actions = [
+        "Microsoft.Network/virtualNetworks/subnets/join/action",
+        "Microsoft.Network/virtualNetworks/subnets/prepareNetworkPolicies/action",
+        "Microsoft.Network/virtualNetworks/subnets/unprepareNetworkPolicies/action"
+      ]
     }
   }
 }
@@ -94,7 +100,11 @@ resource "azurerm_subnet" "private" {
     name = "databricks-del-private"
     service_delegation {
       name    = "Microsoft.Databricks/workspaces"
-      actions = ["Microsoft.Network/virtualNetworks/subnets/join/action", "Microsoft.Network/virtualNetworks/subnets/prepareNetworkPolicies/action", "Microsoft.Network/virtualNetworks/subnets/unprepareNetworkPolicies/action"]
+      actions = [
+        "Microsoft.Network/virtualNetworks/subnets/join/action",
+        "Microsoft.Network/virtualNetworks/subnets/prepareNetworkPolicies/action",
+        "Microsoft.Network/virtualNetworks/subnets/unprepareNetworkPolicies/action"
+      ]
     }
   }
 }
@@ -121,21 +131,19 @@ resource "azurerm_subnet_network_security_group_association" "pe" {
   network_security_group_id = azurerm_network_security_group.nsg_pe.id
 }
 
-# this needs to be connected to the storage (databricks
 resource "azurerm_databricks_access_connector" "this" {
   name                = "ac-${var.workspace_name}"
   location            = var.location
   resource_group_name = var.resource_group_name
 
   identity {
-    type = "SystemAssigned" 
+    type = "SystemAssigned"
   }
 }
 
 output "access_connector_id" {
   value = azurerm_databricks_access_connector.this.id
 }
-
 
 resource "azurerm_databricks_workspace" "this" {
   name                        = var.workspace_name
@@ -153,6 +161,17 @@ resource "azurerm_databricks_workspace" "this" {
     public_subnet_network_security_group_association_id  = azurerm_subnet_network_security_group_association.public.id
     private_subnet_network_security_group_association_id = azurerm_subnet_network_security_group_association.private.id
   }
+
+  # Ensures networking is destroyed AFTER the workspace on terraform destroy
+  depends_on = [
+    azurerm_subnet_network_security_group_association.public,
+    azurerm_subnet_network_security_group_association.private,
+    azurerm_subnet_network_security_group_association.pe,
+    azurerm_virtual_network.vnet,
+    azurerm_subnet.public,
+    azurerm_subnet.private,
+    azurerm_subnet.pe_subnet,
+  ]
 }
 
 data "azurerm_storage_account" "st" {
@@ -173,6 +192,17 @@ resource "azurerm_private_dns_zone" "queue" {
 resource "azurerm_private_dns_zone" "vault" {
   name                = "privatelink.vaultcore.azure.net"
   resource_group_name = var.resource_group_name
+}
+resource "azurerm_private_dns_zone" "dfs" {
+  name                = "privatelink.dfs.core.windows.net"
+  resource_group_name = var.resource_group_name
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "dfs" {
+  name                  = "${var.workspace_name}-dfs-link"
+  resource_group_name   = var.resource_group_name
+  private_dns_zone_name = azurerm_private_dns_zone.dfs.name
+  virtual_network_id    = azurerm_virtual_network.vnet.id
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "blob" {
@@ -253,6 +283,25 @@ resource "azurerm_private_endpoint" "kv_pe" {
   }
 }
 
+resource "azurerm_private_endpoint" "dfs_pe" {
+  name                = "pe-dfs-${var.workspace_name}"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  subnet_id           = azurerm_subnet.pe_subnet.id
+
+  private_service_connection {
+    name                           = "psc-dfs"
+    private_connection_resource_id = data.azurerm_storage_account.st.id
+    subresource_names              = ["dfs"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "dns-group-dfs"
+    private_dns_zone_ids = [azurerm_private_dns_zone.dfs.id]
+  }
+}
+
 resource "azurerm_role_assignment" "blob_data_contributor" {
   scope                = data.azurerm_storage_account.st.id
   role_definition_name = "Storage Blob Data Contributor"
@@ -262,5 +311,17 @@ resource "azurerm_role_assignment" "blob_data_contributor" {
 resource "azurerm_role_assignment" "queue_data_contributor" {
   scope                = data.azurerm_storage_account.st.id
   role_definition_name = "Storage Queue Data Contributor"
+  principal_id         = azurerm_databricks_access_connector.this.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "storage_acc_contributor" {
+  scope                = data.azurerm_storage_account.st.id
+  role_definition_name = "Storage Account Contributor"
+  principal_id         = azurerm_databricks_access_connector.this.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "eventg_es_contributor" {
+  scope                = data.azurerm_storage_account.st.id
+  role_definition_name = "EventGrid EventSubscription Contributor"
   principal_id         = azurerm_databricks_access_connector.this.identity[0].principal_id
 }

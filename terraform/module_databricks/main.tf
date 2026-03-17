@@ -1,112 +1,8 @@
-resource "azurerm_network_security_group" "nsg_public" {
-  name                = "nsg-${var.workspace_name}-public"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-}
-
-resource "azurerm_network_security_group" "nsg_private" {
-  name                = "nsg-${var.workspace_name}-private"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-}
-
-resource "azurerm_network_security_group" "nsg_pe" {
-  name                = "nsg-${var.workspace_name}-pe"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-
-  security_rule {
-    name                         = "allow-inbound-from-dbx-public"
-    priority                     = 1000
-    direction                    = "Inbound"
-    access                       = "Allow"
-    protocol                     = "Tcp"
-    source_address_prefixes      = var.public_subnet_prefix
-    destination_address_prefixes = var.pe_subnet_prefix
-    source_port_range            = "*"
-    destination_port_range       = "443"
-  }
-
-  security_rule {
-    name                         = "allow-inbound-from-dbx-private"
-    priority                     = 1100
-    direction                    = "Inbound"
-    access                       = "Allow"
-    protocol                     = "Tcp"
-    source_address_prefixes      = var.private_subnet_prefix
-    destination_address_prefixes = var.pe_subnet_prefix
-    source_port_range            = "*"
-    destination_port_range       = "443"
-  }
-
-  security_rule {
-    name                       = "deny-inbound-all"
-    priority                   = 4096
-    direction                  = "Inbound"
-    access                     = "Deny"
-    protocol                   = "*"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-    source_port_range          = "*"
-    destination_port_range     = "*"
-  }
-
-  security_rule {
-    name                       = "deny-outbound-internet"
-    priority                   = 1000
-    direction                  = "Outbound"
-    access                     = "Deny"
-    protocol                   = "*"
-    source_address_prefix      = "*"
-    destination_address_prefix = "Internet"
-    source_port_range          = "*"
-    destination_port_range     = "*"
-  }
-}
-
 resource "azurerm_virtual_network" "vnet" {
   name                = "vnet-${var.workspace_name}"
   address_space       = var.vnet_address_space
   location            = var.location
   resource_group_name = var.resource_group_name
-}
-
-resource "azurerm_subnet" "public" {
-  name                 = "public-subnet"
-  resource_group_name  = var.resource_group_name
-  virtual_network_name = azurerm_virtual_network.vnet.name
-  address_prefixes     = var.public_subnet_prefix
-
-  delegation {
-    name = "databricks-del-public"
-    service_delegation {
-      name    = "Microsoft.Databricks/workspaces"
-      actions = [
-        "Microsoft.Network/virtualNetworks/subnets/join/action",
-        "Microsoft.Network/virtualNetworks/subnets/prepareNetworkPolicies/action",
-        "Microsoft.Network/virtualNetworks/subnets/unprepareNetworkPolicies/action"
-      ]
-    }
-  }
-}
-
-resource "azurerm_subnet" "private" {
-  name                 = "private-subnet"
-  resource_group_name  = var.resource_group_name
-  virtual_network_name = azurerm_virtual_network.vnet.name
-  address_prefixes     = var.private_subnet_prefix
-
-  delegation {
-    name = "databricks-del-private"
-    service_delegation {
-      name    = "Microsoft.Databricks/workspaces"
-      actions = [
-        "Microsoft.Network/virtualNetworks/subnets/join/action",
-        "Microsoft.Network/virtualNetworks/subnets/prepareNetworkPolicies/action",
-        "Microsoft.Network/virtualNetworks/subnets/unprepareNetworkPolicies/action"
-      ]
-    }
-  }
 }
 
 resource "azurerm_subnet" "pe_subnet" {
@@ -115,70 +11,6 @@ resource "azurerm_subnet" "pe_subnet" {
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = var.pe_subnet_prefix
 }
-
-resource "azurerm_subnet_network_security_group_association" "public" {
-  subnet_id                 = azurerm_subnet.public.id
-  network_security_group_id = azurerm_network_security_group.nsg_public.id
-}
-
-resource "azurerm_subnet_network_security_group_association" "private" {
-  subnet_id                 = azurerm_subnet.private.id
-  network_security_group_id = azurerm_network_security_group.nsg_private.id
-}
-
-resource "azurerm_subnet_network_security_group_association" "pe" {
-  subnet_id                 = azurerm_subnet.pe_subnet.id
-  network_security_group_id = azurerm_network_security_group.nsg_pe.id
-}
-
-resource "azurerm_databricks_access_connector" "this" {
-  name                = "ac-${var.workspace_name}"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-
-  identity {
-    type = "SystemAssigned"
-  }
-}
-
-output "access_connector_id" {
-  value = azurerm_databricks_access_connector.this.id
-}
-
-resource "azurerm_databricks_workspace" "this" {
-  name                        = var.workspace_name
-  resource_group_name         = var.resource_group_name
-  location                    = var.location
-  sku                         = "premium"
-  managed_resource_group_name = "${var.workspace_name}-managed-rg"
-
-  custom_parameters {
-    no_public_ip        = true
-    virtual_network_id  = azurerm_virtual_network.vnet.id
-    public_subnet_name  = azurerm_subnet.public.name
-    private_subnet_name = azurerm_subnet.private.name
-
-    public_subnet_network_security_group_association_id  = azurerm_subnet_network_security_group_association.public.id
-    private_subnet_network_security_group_association_id = azurerm_subnet_network_security_group_association.private.id
-  }
-
-  # Ensures networking is destroyed AFTER the workspace on terraform destroy
-  depends_on = [
-    azurerm_subnet_network_security_group_association.public,
-    azurerm_subnet_network_security_group_association.private,
-    azurerm_subnet_network_security_group_association.pe,
-    azurerm_virtual_network.vnet,
-    azurerm_subnet.public,
-    azurerm_subnet.private,
-    azurerm_subnet.pe_subnet,
-  ]
-}
-
-data "azurerm_storage_account" "st" {
-  name                = var.storage_account_name
-  resource_group_name = var.resource_group_name
-}
-
 resource "azurerm_private_dns_zone" "blob" {
   name                = "privatelink.blob.core.windows.net"
   resource_group_name = var.resource_group_name
@@ -189,22 +21,15 @@ resource "azurerm_private_dns_zone" "queue" {
   resource_group_name = var.resource_group_name
 }
 
-resource "azurerm_private_dns_zone" "vault" {
-  name                = "privatelink.vaultcore.azure.net"
-  resource_group_name = var.resource_group_name
-}
 resource "azurerm_private_dns_zone" "dfs" {
   name                = "privatelink.dfs.core.windows.net"
   resource_group_name = var.resource_group_name
 }
 
-resource "azurerm_private_dns_zone_virtual_network_link" "dfs" {
-  name                  = "${var.workspace_name}-dfs-link"
-  resource_group_name   = var.resource_group_name
-  private_dns_zone_name = azurerm_private_dns_zone.dfs.name
-  virtual_network_id    = azurerm_virtual_network.vnet.id
+resource "azurerm_private_dns_zone" "vault" {
+  name                = "privatelink.vaultcore.azure.net"
+  resource_group_name = var.resource_group_name
 }
-
 resource "azurerm_private_dns_zone_virtual_network_link" "blob" {
   name                  = "${var.workspace_name}-blob-link"
   resource_group_name   = var.resource_group_name
@@ -219,6 +44,13 @@ resource "azurerm_private_dns_zone_virtual_network_link" "queue" {
   virtual_network_id    = azurerm_virtual_network.vnet.id
 }
 
+resource "azurerm_private_dns_zone_virtual_network_link" "dfs" {
+  name                  = "${var.workspace_name}-dfs-link"
+  resource_group_name   = var.resource_group_name
+  private_dns_zone_name = azurerm_private_dns_zone.dfs.name
+  virtual_network_id    = azurerm_virtual_network.vnet.id
+}
+
 resource "azurerm_private_dns_zone_virtual_network_link" "vault" {
   name                  = "${var.workspace_name}-vault-link"
   resource_group_name   = var.resource_group_name
@@ -226,26 +58,31 @@ resource "azurerm_private_dns_zone_virtual_network_link" "vault" {
   virtual_network_id    = azurerm_virtual_network.vnet.id
 }
 
-resource "azurerm_private_endpoint" "st_pe" {
-  name                = "pe-st-${var.workspace_name}"
+data "azurerm_storage_account" "st" {
+  name                = var.storage_account_name
+  resource_group_name = var.resource_group_name
+}
+
+resource "azurerm_private_endpoint" "st_blob" {
+  name                = "pe-blob-${var.workspace_name}"
   location            = var.location
   resource_group_name = var.resource_group_name
   subnet_id           = azurerm_subnet.pe_subnet.id
 
   private_service_connection {
-    name                           = "psc-st"
+    name                           = "psc-blob"
     private_connection_resource_id = data.azurerm_storage_account.st.id
     subresource_names              = ["blob"]
     is_manual_connection           = false
   }
 
   private_dns_zone_group {
-    name                 = "dns-group-st"
+    name                 = "dns-group-blob"
     private_dns_zone_ids = [azurerm_private_dns_zone.blob.id]
   }
 }
 
-resource "azurerm_private_endpoint" "queue_pe" {
+resource "azurerm_private_endpoint" "st_queue" {
   name                = "pe-queue-${var.workspace_name}"
   location            = var.location
   resource_group_name = var.resource_group_name
@@ -264,7 +101,26 @@ resource "azurerm_private_endpoint" "queue_pe" {
   }
 }
 
-resource "azurerm_private_endpoint" "kv_pe" {
+resource "azurerm_private_endpoint" "st_dfs" {
+  name                = "pe-dfs-${var.workspace_name}"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  subnet_id           = azurerm_subnet.pe_subnet.id
+
+  private_service_connection {
+    name                           = "psc-dfs"
+    private_connection_resource_id = data.azurerm_storage_account.st.id
+    subresource_names              = ["dfs"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "dns-group-dfs"
+    private_dns_zone_ids = [azurerm_private_dns_zone.dfs.id]
+  }
+}
+
+resource "azurerm_private_endpoint" "kv" {
   name                = "pe-kv-${var.workspace_name}"
   location            = var.location
   resource_group_name = var.resource_group_name
@@ -283,22 +139,13 @@ resource "azurerm_private_endpoint" "kv_pe" {
   }
 }
 
-resource "azurerm_private_endpoint" "dfs_pe" {
-  name                = "pe-dfs-${var.workspace_name}"
+resource "azurerm_databricks_access_connector" "this" {
+  name                = "ac-${var.workspace_name}"
   location            = var.location
   resource_group_name = var.resource_group_name
-  subnet_id           = azurerm_subnet.pe_subnet.id
 
-  private_service_connection {
-    name                           = "psc-dfs"
-    private_connection_resource_id = data.azurerm_storage_account.st.id
-    subresource_names              = ["dfs"]
-    is_manual_connection           = false
-  }
-
-  private_dns_zone_group {
-    name                 = "dns-group-dfs"
-    private_dns_zone_ids = [azurerm_private_dns_zone.dfs.id]
+  identity {
+    type = "SystemAssigned"
   }
 }
 

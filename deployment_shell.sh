@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
-
+ 
 ENV=dev
 echo "Deploying for environment: $ENV"
-
+ 
 # ---- variables ----
-RESOURCE_GROUP="rg-adb-demo-$ENV-01"
+VERSION=02
+RESOURCE_GROUP="rg-adb-demo-$ENV-$VERSION"
 LOCATION="northeurope"
 KEYVAULT_NAME="demo-kv-123456-$ENV"
 STORAGE_ACCOUNT_NAME="stagedemo${ENV}1234"
 CONTAINER_NAME="default"
-
+WORKSPACE_NAME="adb-demo-$ENV-$VERSION"
+ 
 # ---- create resource group (common) ----
 echo "Creating/Checking Resource Group..."
 az group create \
   --name $RESOURCE_GROUP \
   --location $LOCATION
-
+ 
 # ---- create key vault (common) ----
 echo "Creating/Checking Key Vault..."
 az keyvault create \
@@ -24,7 +26,7 @@ az keyvault create \
   --location $LOCATION \
   --sku standard \
   --enable-rbac-authorization true
-
+ 
 # ---- create storage account ----
 echo "Creating/Checking Storage Account: $STORAGE_ACCOUNT_NAME"
 az storage account create \
@@ -38,25 +40,35 @@ az storage account create \
   --https-only true \
   --allow-blob-public-access false \
   --allow-shared-key-access false
-
+ 
 # ---- create container ----
 echo "Creating/Checking Container: $CONTAINER_NAME"
 az storage fs create \
   --name $CONTAINER_NAME \
   --account-name $STORAGE_ACCOUNT_NAME \
   --public-access off \
-   --auth-mode login
-
-# ---- create queue ----
+  --auth-mode login
+ 
+# ---- create queues ----
 echo "Creating/Checking Queues"
 az storage queue create \
   --name "job-queue-1" \
   --account-name $STORAGE_ACCOUNT_NAME \
-   --auth-mode login
-
+  --auth-mode login
+ 
 az storage queue create \
   --name "job-queue-2" \
   --account-name $STORAGE_ACCOUNT_NAME \
-   --auth-mode login
-
+  --auth-mode login
+ 
+# ---- create databricks workspace ----
+echo "Creating/Checking Databricks Workspace: $WORKSPACE_NAME"
+az databricks workspace create \
+  --name $WORKSPACE_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION \
+  --sku premium \
+  --managed-resource-group "rg-managed-${WORKSPACE_NAME}" \
+  --no-wait false
+ 
 echo "done"

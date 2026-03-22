@@ -16,29 +16,29 @@ variable "SUBSCRIPTION_ID" {
   type      = string
   sensitive = true
 }
-
-# Reference the existing Resource Group created by shell script
-data "azurerm_resource_group" "rg" {
-  name = "rg-adb-demo-dev-02"
+variable "environment" {
+  default = "dev"
 }
 
-# Reference the existing Key Vault created by shell script
-data "azurerm_key_vault" "kv" {
-  name                = "demo-kv-123456-dev"
-  resource_group_name = data.azurerm_resource_group.rg.name
+variable "app_name" {
+  default = "mytest"
 }
+variable "location" {
+  default = "northeurope"
+}
+variable "p_version" {
+  default = "v1"
+}
+
 
 module "databricks" {
-  source = "../module_databricks"
-
-  resource_group_name   = data.azurerm_resource_group.rg.name
-  location              = data.azurerm_resource_group.rg.location
-  workspace_name        = "adb-demo-dev-02"
-  storage_account_name  = "stagedemodev1234"
-  key_vault_id          = data.azurerm_key_vault.kv.id
-  
-  vnet_address_space    = ["10.0.0.0/16"]
-  public_subnet_prefix  = ["10.0.1.0/24"]
-  private_subnet_prefix = ["10.0.2.0/24"]
-  pe_subnet_prefix      = ["10.0.3.0/24"]
+  source                         = "../module_databricks"
+  environment                    = var.environment
+  queue_storage_account_name     = "stq${var.app_name}${var.environment}${var.p_version}"
+  app_name                       = var.app_name
+  metastore_storage_account_name = "stmeta${var.app_name}${var.p_version}"
+  hub_resource_group_name        = "rg-base-${var.app_name}-${var.location}-${var.p_version}"
+  resource_group_name            = "rg-${var.app_name}-${var.environment}-${var.location}-${var.p_version}"
+  location                       = var.location
+  p_version                      = var.p_version
 }

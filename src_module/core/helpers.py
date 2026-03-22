@@ -19,9 +19,8 @@ class BaseRunner:
         self.spark = SparkSession.builder.getOrCreate()
         self.job_status_table = f"{self.catalog}.bronze.job_processing_status"
         self.worker_id = str(uuid.uuid4())
-        self.storage_account_name = f"stagedemo{environment}1234"
-        self.secret_scope = "my-scope"
-        self.sas_token = None
+        self.storage_account_name = f"stqmytest{environment}v1"
+        self.access_connector_name = "access-conn-name"
         self.credentials = None
 
         if create_schemas:
@@ -40,10 +39,8 @@ class BaseRunner:
 
     def add_jobs_to_queue(self, job_list: list, queue_name: str):
 
-        # dbutils = DBUtils(self.spark)
-
-        # sas_token = dbutils.secrets.get(self.secret_scope, "que-sas-token")
-        self.credentials = DefaultAzureCredential()
+        dbutils = DBUtils(self.spark)
+        self.credentials = dbutils.credentials.getServiceCredentialsProvider(self.access_connector_name)
         queue_client = QueueClient(
             account_url=f"https://{self.storage_account_name}.queue.core.windows.net",
             queue_name=queue_name,
@@ -67,10 +64,8 @@ class BaseRunner:
     def dequeue_messages(self, queue_name, max_messages=2000, visibility_timeout=900):
 
         if not self.credentials:
-            # dbutils = DBUtils(self.spark)
-            # sas_token = dbutils.secrets.get(self.secret_scope, "que-sas-token")
-            # self.sas_token = sas_token
-            self.credentials = DefaultAzureCredential()
+            dbutils = DBUtils(self.spark)
+            self.credentials = dbutils.credentials.getServiceCredentialsProvider(self.access_connector_name)
 
         queue_client = QueueClient(
             account_url=f"https://{self.storage_account_name}.queue.core.windows.net",

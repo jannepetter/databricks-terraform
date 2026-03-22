@@ -5,6 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "src_module"
 version = "0.1.1-11"
+dependencies = [
+    "azure-keyvault-secrets==4.10.0",
+    "azure-storage-queue==12.15.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

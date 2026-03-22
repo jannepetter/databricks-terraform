@@ -13,4 +13,6 @@ apply_terraform:
 destroy_terraform:
 	terraform -chdir=terraform/dev destroy
 
+fmt:
+	terraform -chdir=terraform fmt --recursive
 # source .venv/bin/activate

@@ -1,4 +1,9 @@
-variable "resource_group_name" {
+
+variable "environment" {
+  type = string
+}
+
+variable "app_name" {
   type = string
 }
 
@@ -6,30 +11,27 @@ variable "location" {
   type = string
 }
 
-variable "workspace_name" {
-  type = string
+variable "p_version" {
+  type        = string
+  description = "Project version. (version is reserved)"
 }
 
-variable "storage_account_name" {
-  type = string
+variable "resource_group_name" {
+  type        = string
+  description = "Spoke resource group"
 }
 
-variable "key_vault_id" {
-  type = string
+variable "hub_resource_group_name" {
+  type        = string
+  description = "Hub/base resource group where hub VNet and DNS zones live"
 }
 
-variable "vnet_address_space" {
-  type = list(string)
+variable "metastore_storage_account_name" {
+  type        = string
+  description = "Metastore storage account name in hub RG"
 }
 
-variable "public_subnet_prefix" {
-  type = list(string)
-}
-
-variable "private_subnet_prefix" {
-  type = list(string)
-}
-
-variable "pe_subnet_prefix" {
-  type = list(string)
+variable "queue_storage_account_name" {
+  type        = string
+  description = "Queue storage account name in spoke RG"
 }

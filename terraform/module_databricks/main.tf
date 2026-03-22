@@ -1,174 +1,118 @@
-resource "azurerm_virtual_network" "vnet" {
-  name                = "vnet-${var.workspace_name}"
-  address_space       = var.vnet_address_space
-  location            = var.location
+locals {
+  tags = {
+    environment = var.environment
+    project     = var.app_name
+  }
+}
+
+# ---- reference existing spoke vnet (created in bash script) ----
+data "azurerm_virtual_network" "spoke" {
+  name                = "vnet-spoke-${var.app_name}-${var.environment}-${var.location}"
   resource_group_name = var.resource_group_name
 }
 
-resource "azurerm_subnet" "pe_subnet" {
-  name                 = "subnet-pe"
-  resource_group_name  = var.resource_group_name
-  virtual_network_name = azurerm_virtual_network.vnet.name
-  address_prefixes     = var.pe_subnet_prefix
-}
-resource "azurerm_private_dns_zone" "blob" {
-  name                = "privatelink.blob.core.windows.net"
-  resource_group_name = var.resource_group_name
+# ---- reference existing hub vnet ----
+data "azurerm_virtual_network" "hub" {
+  name                = "vnet-hub-${var.app_name}-${var.location}"
+  resource_group_name = var.hub_resource_group_name
 }
 
-resource "azurerm_private_dns_zone" "queue" {
-  name                = "privatelink.queue.core.windows.net"
-  resource_group_name = var.resource_group_name
+# ---- vnet peering: spoke -> hub ----
+resource "azurerm_virtual_network_peering" "spoke_to_hub" {
+  name                         = "peer-spoke-to-hub-${var.environment}"
+  resource_group_name          = var.resource_group_name
+  virtual_network_name         = data.azurerm_virtual_network.spoke.name
+  remote_virtual_network_id    = data.azurerm_virtual_network.hub.id
+  allow_virtual_network_access = true
+  allow_forwarded_traffic      = true
 }
 
-resource "azurerm_private_dns_zone" "dfs" {
-  name                = "privatelink.dfs.core.windows.net"
-  resource_group_name = var.resource_group_name
+# ---- vnet peering: hub -> spoke ----
+resource "azurerm_virtual_network_peering" "hub_to_spoke" {
+  name                         = "peer-hub-to-spoke-${var.environment}"
+  resource_group_name          = var.hub_resource_group_name
+  virtual_network_name         = data.azurerm_virtual_network.hub.name
+  remote_virtual_network_id    = data.azurerm_virtual_network.spoke.id
+  allow_virtual_network_access = true
+  allow_forwarded_traffic      = true
 }
 
-resource "azurerm_private_dns_zone" "vault" {
+data "azurerm_private_dns_zone" "vault" {
   name                = "privatelink.vaultcore.azure.net"
-  resource_group_name = var.resource_group_name
-}
-resource "azurerm_private_dns_zone_virtual_network_link" "blob" {
-  name                  = "${var.workspace_name}-blob-link"
-  resource_group_name   = var.resource_group_name
-  private_dns_zone_name = azurerm_private_dns_zone.blob.name
-  virtual_network_id    = azurerm_virtual_network.vnet.id
-}
-
-resource "azurerm_private_dns_zone_virtual_network_link" "queue" {
-  name                  = "${var.workspace_name}-queue-link"
-  resource_group_name   = var.resource_group_name
-  private_dns_zone_name = azurerm_private_dns_zone.queue.name
-  virtual_network_id    = azurerm_virtual_network.vnet.id
-}
-
-resource "azurerm_private_dns_zone_virtual_network_link" "dfs" {
-  name                  = "${var.workspace_name}-dfs-link"
-  resource_group_name   = var.resource_group_name
-  private_dns_zone_name = azurerm_private_dns_zone.dfs.name
-  virtual_network_id    = azurerm_virtual_network.vnet.id
+  resource_group_name = var.hub_resource_group_name
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "vault" {
-  name                  = "${var.workspace_name}-vault-link"
-  resource_group_name   = var.resource_group_name
-  private_dns_zone_name = azurerm_private_dns_zone.vault.name
-  virtual_network_id    = azurerm_virtual_network.vnet.id
+  name                  = "dnslink-spoke-${var.environment}-vault"
+  resource_group_name   = var.hub_resource_group_name
+  private_dns_zone_name = data.azurerm_private_dns_zone.vault.name
+  virtual_network_id    = data.azurerm_virtual_network.spoke.id
+  registration_enabled  = false
+  tags                  = local.tags
 }
 
-data "azurerm_storage_account" "st" {
-  name                = var.storage_account_name
+# ---- reference existing access connector ----
+data "azurerm_databricks_access_connector" "this" {
+  name                = "ac-adb-${var.app_name}-${var.environment}-${var.p_version}"
   resource_group_name = var.resource_group_name
 }
 
-resource "azurerm_private_endpoint" "st_blob" {
-  name                = "pe-blob-${var.workspace_name}"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-  subnet_id           = azurerm_subnet.pe_subnet.id
-
-  private_service_connection {
-    name                           = "psc-blob"
-    private_connection_resource_id = data.azurerm_storage_account.st.id
-    subresource_names              = ["blob"]
-    is_manual_connection           = false
-  }
-
-  private_dns_zone_group {
-    name                 = "dns-group-blob"
-    private_dns_zone_ids = [azurerm_private_dns_zone.blob.id]
-  }
+# ---- reference existing metastore storage (in hub) ----
+data "azurerm_storage_account" "metastore" {
+  name                = var.metastore_storage_account_name
+  resource_group_name = var.hub_resource_group_name
 }
 
-resource "azurerm_private_endpoint" "st_queue" {
-  name                = "pe-queue-${var.workspace_name}"
-  location            = var.location
+# ---- reference existing queue storage ----
+data "azurerm_storage_account" "queue" {
+  name                = var.queue_storage_account_name
   resource_group_name = var.resource_group_name
-  subnet_id           = azurerm_subnet.pe_subnet.id
-
-  private_service_connection {
-    name                           = "psc-queue"
-    private_connection_resource_id = data.azurerm_storage_account.st.id
-    subresource_names              = ["queue"]
-    is_manual_connection           = false
-  }
-
-  private_dns_zone_group {
-    name                 = "dns-group-queue"
-    private_dns_zone_ids = [azurerm_private_dns_zone.queue.id]
-  }
 }
 
-resource "azurerm_private_endpoint" "st_dfs" {
-  name                = "pe-dfs-${var.workspace_name}"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-  subnet_id           = azurerm_subnet.pe_subnet.id
-
-  private_service_connection {
-    name                           = "psc-dfs"
-    private_connection_resource_id = data.azurerm_storage_account.st.id
-    subresource_names              = ["dfs"]
-    is_manual_connection           = false
-  }
-
-  private_dns_zone_group {
-    name                 = "dns-group-dfs"
-    private_dns_zone_ids = [azurerm_private_dns_zone.dfs.id]
-  }
+data "azurerm_key_vault" "kv" {
+  name                = "kv-${var.app_name}-base"
+  resource_group_name = var.hub_resource_group_name
 }
 
-resource "azurerm_private_endpoint" "kv" {
-  name                = "pe-kv-${var.workspace_name}"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-  subnet_id           = azurerm_subnet.pe_subnet.id
-
-  private_service_connection {
-    name                           = "psc-kv"
-    private_connection_resource_id = var.key_vault_id
-    subresource_names              = ["vault"]
-    is_manual_connection           = false
-  }
-
-  private_dns_zone_group {
-    name                 = "dns-group-kv"
-    private_dns_zone_ids = [azurerm_private_dns_zone.vault.id]
-  }
-}
-
-resource "azurerm_databricks_access_connector" "this" {
-  name                = "ac-${var.workspace_name}"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-
-  identity {
-    type = "SystemAssigned"
-  }
-}
-
-resource "azurerm_role_assignment" "blob_data_contributor" {
-  scope                = data.azurerm_storage_account.st.id
+# ---- role assignments: metastore storage ----
+resource "azurerm_role_assignment" "metastore_blob_contributor" {
+  scope                = data.azurerm_storage_account.metastore.id
   role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = azurerm_databricks_access_connector.this.identity[0].principal_id
+  principal_id         = data.azurerm_databricks_access_connector.this.identity[0].principal_id
 }
 
-resource "azurerm_role_assignment" "queue_data_contributor" {
-  scope                = data.azurerm_storage_account.st.id
-  role_definition_name = "Storage Queue Data Contributor"
-  principal_id         = azurerm_databricks_access_connector.this.identity[0].principal_id
-}
-
-resource "azurerm_role_assignment" "storage_acc_contributor" {
-  scope                = data.azurerm_storage_account.st.id
+resource "azurerm_role_assignment" "metastore_acc_contributor" {
+  scope                = data.azurerm_storage_account.metastore.id
   role_definition_name = "Storage Account Contributor"
-  principal_id         = azurerm_databricks_access_connector.this.identity[0].principal_id
+  principal_id         = data.azurerm_databricks_access_connector.this.identity[0].principal_id
 }
 
-resource "azurerm_role_assignment" "eventg_es_contributor" {
-  scope                = data.azurerm_storage_account.st.id
-  role_definition_name = "EventGrid EventSubscription Contributor"
-  principal_id         = azurerm_databricks_access_connector.this.identity[0].principal_id
+resource "azurerm_role_assignment" "metastore_queue_contributor" {
+  scope                = data.azurerm_storage_account.metastore.id
+  role_definition_name = "Storage Queue Data Contributor"
+  principal_id         = data.azurerm_databricks_access_connector.this.identity[0].principal_id
 }
+
+resource "azurerm_role_assignment" "metastore_es_contributor" {
+  scope                = data.azurerm_storage_account.metastore.id
+  role_definition_name = "EventGrid EventSubscription Contributor"
+  principal_id         = data.azurerm_databricks_access_connector.this.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "blob_delegator" {
+  scope                = data.azurerm_storage_account.metastore.id
+  role_definition_name = "Storage Blob Delegator"
+  principal_id         = data.azurerm_databricks_access_connector.this.identity[0].principal_id
+}
+resource "azurerm_role_assignment" "queue_data_contributor" {
+  scope                = data.azurerm_storage_account.queue.id
+  role_definition_name = "Storage Queue Data Contributor"
+  principal_id         = data.azurerm_databricks_access_connector.this.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "kv_secrets_user" {
+  scope                = data.azurerm_key_vault.kv.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = data.azurerm_databricks_access_connector.this.identity[0].principal_id
+}
+
